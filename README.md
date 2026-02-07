@@ -131,6 +131,23 @@ cargo test
 cargo clippy --all-targets --all-features
 ```
 
+## Compatibility Testing
+
+Run the multi-version database matrix test (MySQL 5.7/8.0 + PostgreSQL 14/16):
+
+```bash
+bash tests/scripts/run-matrix.sh
+```
+
+The script validates:
+
+- collector compatibility by database/version
+- Level 0 capability extraction
+- MySQL Level 1 slow-log digest and error-log alert collection
+- PostgreSQL Level 1 auto-downgrade behavior
+
+Set `KEEP_CONTAINERS=1` to keep containers running after the script exits.
+
 ## Roadmap
 
 - PostgreSQL Level 1: statement log + digest + alert extraction

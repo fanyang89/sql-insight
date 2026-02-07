@@ -425,6 +425,7 @@ fn init_tracing(verbose: u8) {
     tracing_subscriber::fmt()
         .with_max_level(level)
         .with_target(false)
+        .with_writer(std::io::stderr)
         .init();
 }
 
