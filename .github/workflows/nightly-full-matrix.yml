@@ -37,6 +37,12 @@ jobs:
       - name: Contract schema + golden gate
         run: CONTRACT_PROFILE=full bash tests/scripts/check-contract.sh
 
+      - name: Budget gate (full)
+        run: bash tests/scripts/check-budget.sh
+
+      - name: Resilience gate
+        run: bash tests/scripts/run-resilience.sh
+
       - name: Upload matrix artifacts
         if: always()
         uses: actions/upload-artifact@v4

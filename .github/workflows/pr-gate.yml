@@ -39,6 +39,9 @@ jobs:
       - name: Contract schema + golden gate
         run: CONTRACT_PROFILE=smoke bash tests/scripts/check-contract.sh
 
+      - name: Budget gate (smoke)
+        run: bash tests/scripts/check-budget.sh
+
       - name: Upload matrix artifacts
         if: always()
         uses: actions/upload-artifact@v4

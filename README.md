@@ -187,8 +187,24 @@ Golden summary baseline:
 
 CI applies this in two layers:
 
-- PR gate: unit tests + parser regression + smoke matrix + contract gate
-- Nightly gate: unit tests + full matrix + contract gate
+- PR gate: unit tests + parser regression + smoke matrix + contract gate + budget gate
+- Nightly gate: unit tests + full matrix + contract gate + budget gate + resilience gate
+
+## Budget & Resilience Gates
+
+Check runtime and payload budgets on collected matrix outputs:
+
+```bash
+bash tests/scripts/check-budget.sh
+```
+
+Run resilience scenarios (timeout/retry and forced Level 1 downgrade):
+
+```bash
+bash tests/scripts/run-resilience.sh
+```
+
+Nightly CI additionally runs budget and resilience gates after full matrix.
 
 ## Roadmap
 

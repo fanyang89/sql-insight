@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 COMPOSE_FILE="${ROOT_DIR}/tests/compose/docker-compose.yml"
-RESULTS_DIR="${ROOT_DIR}/tests/artifacts/results"
+RESULTS_DIR="${RESULTS_DIR:-${ROOT_DIR}/tests/artifacts/results}"
 BIN_PATH="${ROOT_DIR}/target/debug/sql-insight"
 
 compose() {
@@ -39,15 +39,20 @@ wait_for_service_healthy() {
 
 ensure_test_dirs() {
   local uid gid
+  local results_subdir
   uid="$(id -u)"
   gid="$(id -g)"
+  results_subdir="${RESULTS_DIR#${ROOT_DIR}/tests/artifacts/}"
+  if [[ "${results_subdir}" == "${RESULTS_DIR}" ]]; then
+    results_subdir="results"
+  fi
 
   mkdir -p "${ROOT_DIR}/tests/artifacts"
   # Bind-mounted files can become unwritable on host; repair ownership via a short-lived container.
   docker run --rm -v "${ROOT_DIR}/tests/artifacts:/artifacts" alpine:3.20 sh -lc "
     rm -rf /artifacts/mysql57 /artifacts/mysql80 /artifacts/postgres14 /artifacts/postgres16
-    rm -rf /artifacts/results
-    mkdir -p /artifacts/mysql57 /artifacts/mysql80 /artifacts/postgres14 /artifacts/postgres16 /artifacts/results
+    rm -rf /artifacts/${results_subdir}
+    mkdir -p /artifacts/mysql57 /artifacts/mysql80 /artifacts/postgres14 /artifacts/postgres16 /artifacts/${results_subdir}
     : > /artifacts/mysql57/slow.log
     : > /artifacts/mysql57/error.log
     : > /artifacts/mysql80/slow.log
