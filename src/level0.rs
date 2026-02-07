@@ -15,6 +15,7 @@ pub struct Level0CollectorConfig {
     pub mysql_url: Option<String>,
     pub table_limit: usize,
     pub index_limit: usize,
+    pub suppress_mysql_missing_warning: bool,
 }
 
 impl Default for Level0CollectorConfig {
@@ -23,6 +24,7 @@ impl Default for Level0CollectorConfig {
             mysql_url: None,
             table_limit: 200,
             index_limit: 500,
+            suppress_mysql_missing_warning: false,
         }
     }
 }
@@ -153,7 +155,7 @@ pub fn collect_level0(config: &Level0CollectorConfig) -> Level0CollectionReport 
         report.capability.replication_status_access = mysql_result.replication_ok;
         report.mysql = mysql_result.snapshot;
         report.warnings.extend(mysql_result.warnings);
-    } else {
+    } else if !config.suppress_mysql_missing_warning {
         report
             .warnings
             .push("MYSQL_URL not provided; skip MySQL Level 0 collection".to_string());

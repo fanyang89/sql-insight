@@ -5,7 +5,10 @@ Through SQLs, we turn EXPLAIN into action.
 ## What It Is
 
 `sql-insight` is a MySQL observability MVP focused on **slow SQL attribution**.
-Current implementation delivers **Level 0 (zero-intrusion, read-only)** collection for strict production environments.
+Current implementation delivers:
+
+- **MySQL 5.x / 8.x**: Level 0 + Level 1
+- **PostgreSQL**: Level 0
 
 ## Current MVP Scope (Level 0)
 
@@ -21,6 +24,30 @@ Current implementation delivers **Level 0 (zero-intrusion, read-only)** collecti
 - Capability-based level negotiation:
   - Determines the highest acceptable collection level and emits downgrade reasons.
 
+## Current MVP Scope (Level 1)
+
+- Slow log hot-switch collection:
+  - `SET GLOBAL slow_query_log = ON`
+  - configurable `long_query_time`
+  - windowed capture with optional restore of original settings
+- Slow log digest aggregation:
+  - SQL fingerprint normalization
+  - grouped counts, latency totals/averages, rows examined/sent
+- Error log alert extraction:
+  - `deadlock`
+  - `crash recovery`
+  - `purge`
+  - `replication`
+
+## PostgreSQL Support (Phase 1)
+
+- Level 0 read-only collection:
+  - `pg_stat_database` aggregated status counters
+  - `pg_settings`
+  - relation and index metadata (`pg_class`/`pg_namespace`/`pg_indexes`)
+  - replication state (`pg_stat_replication`, `pg_stat_wal_receiver`, `pg_is_in_recovery()`)
+- Level 1 is currently MySQL-only and PostgreSQL requests will auto-downgrade to Level 0.
+
 ## Project Layout
 
 - `src/main.rs`: CLI entrypoint (`clap`) + runtime logs (`tracing`)
@@ -34,19 +61,40 @@ Current implementation delivers **Level 0 (zero-intrusion, read-only)** collecti
 cargo run -- --help
 ```
 
-Run Level 0 collection:
+Run Level 1 collection:
 
 ```bash
-MYSQL_URL='mysql://user:pass@127.0.0.1:3306' cargo run -- --output pretty-json -v
+MYSQL_URL='mysql://user:pass@127.0.0.1:3306' cargo run -- --collect-level level1 --output pretty-json -v
 ```
 
-Without `MYSQL_URL`, the tool skips MySQL and collects OS metrics only.
+Run Level 0 only:
+
+```bash
+cargo run -- --collect-level level0 --output json
+```
+
+Run PostgreSQL Level 0:
+
+```bash
+POSTGRES_URL='postgres://user:pass@127.0.0.1:5432/postgres' cargo run -- --engine postgres --collect-level level0 --output pretty-json -v
+```
+
+Without `MYSQL_URL`, the tool skips MySQL collection and keeps available local OS metrics.
 
 ## CLI Options
 
 - `--mysql-url` (or env `MYSQL_URL`)
+- `--postgres-url` (or env `POSTGRES_URL`)
+- `--engine mysql|postgres` (or env `DB_ENGINE`, default `mysql`)
+- `--collect-level level0|level1` (default `level1`)
 - `--table-limit` (or env `LEVEL0_TABLE_LIMIT`, default `200`)
 - `--index-limit` (or env `LEVEL0_INDEX_LIMIT`, default `500`)
+- `--slow-log-window-secs` (env `LEVEL1_SLOW_LOG_WINDOW_SECS`, default `30`)
+- `--slow-log-long-query-time-secs` (env `LEVEL1_LONG_QUERY_TIME_SECS`, default `0.2`)
+- `--slow-log-path` (env `LEVEL1_SLOW_LOG_PATH`)
+- `--error-log-path` (env `LEVEL1_ERROR_LOG_PATH`)
+- `--max-slow-log-bytes` / `--max-error-log-bytes` / `--max-error-log-lines`
+- `--no-slow-log-hot-switch` / `--no-restore-slow-log-settings`
 - `--output json|pretty-json` (default `pretty-json`)
 - `-v/--verbose` (`info` -> `debug` -> `trace`)
 
@@ -60,6 +108,6 @@ cargo clippy --all-targets --all-features
 
 ## Roadmap
 
-- Level 1: slow log + error log ingestion with windowed activation
-- Level 2: `performance_schema` and `sys` enhanced diagnostics
+- PostgreSQL Level 1: statement log + digest + alert extraction
+- Level 2: `performance_schema` and `sys` enhanced diagnostics (MySQL), `pg_stat_statements` path (PostgreSQL)
 - Level 3: expert-mode short-window deep sampling (`tcpdump` / `perf` / `strace`)
