@@ -53,6 +53,7 @@ Current implementation delivers:
 - `src/main.rs`: CLI entrypoint (`clap`) + runtime logs (`tracing`)
 - `src/level0.rs`: Level 0 collectors and report schema
 - `src/collection.rs`: level negotiation and task mapping
+- `src/pipeline.rs`: unified collection contract + scheduler utilities
 - `src/lib.rs`: module exports
 
 ## Quick Start
@@ -73,6 +74,12 @@ Run Level 0 only:
 cargo run -- --collect-level level0 --output json
 ```
 
+Run in scheduler mode (2 cycles):
+
+```bash
+cargo run -- --run-mode daemon --max-cycles 2 --interval-secs 30 --collect-level level0 --output json
+```
+
 Run PostgreSQL Level 0:
 
 ```bash
@@ -83,6 +90,11 @@ Without `MYSQL_URL`, the tool skips MySQL collection and keeps available local O
 
 ## CLI Options
 
+- Scheduler:
+  - `--run-mode once|daemon` (env `RUN_MODE`, default `once`)
+  - `--interval-secs` / `--jitter-pct`
+  - `--timeout-secs` / `--retry-times` / `--retry-backoff-ms`
+  - `--max-cycles` (optional)
 - `--mysql-url` (or env `MYSQL_URL`)
 - `--postgres-url` (or env `POSTGRES_URL`)
 - `--engine mysql|postgres` (or env `DB_ENGINE`, default `mysql`)
@@ -97,6 +109,19 @@ Without `MYSQL_URL`, the tool skips MySQL collection and keeps available local O
 - `--no-slow-log-hot-switch` / `--no-restore-slow-log-settings`
 - `--output json|pretty-json` (default `pretty-json`)
 - `-v/--verbose` (`info` -> `debug` -> `trace`)
+
+## Unified Data Contract
+
+Collector output now uses a unified record envelope (JSON):
+
+- `contract_version`, `run_id`, `cycle`
+- `engine`, `requested_level`, `selected_level`
+- `schedule` (mode/interval/timeout/retry policy)
+- `window` (start/end/duration)
+- `attempts` (per-attempt status and error)
+- `source_status` (per-source success flags)
+- `warnings`, `status`, `error`
+- `payload` (engine-specific collection report)
 
 ## Development
 

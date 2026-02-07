@@ -1,3 +1,6 @@
+use std::thread;
+use std::time::{Duration, Instant};
+
 use clap::{ArgAction, Parser, ValueEnum};
 use serde::Serialize;
 use sql_insight::collection::{
@@ -5,23 +8,41 @@ use sql_insight::collection::{
 };
 use sql_insight::level0::{Level0CollectionReport, Level0CollectorConfig, collect_level0};
 use sql_insight::level1::{Level1CollectionReport, Level1CollectorConfig, collect_level1};
+use sql_insight::pipeline::{
+    AttemptTrace, RunMode, SchedulerConfig, SourceStatus, UnifiedCollectionRecord,
+    jittered_interval, new_run_id, now_unix_ms, run_with_timeout,
+};
 use sql_insight::postgres_level0::{
     PostgresLevel0CollectionReport, PostgresLevel0CollectorConfig, collect_postgres_level0,
 };
 use tracing::{debug, info, warn};
 use tracing_subscriber::filter::LevelFilter;
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Clone, Parser)]
 #[command(
     name = "sql-insight",
     version,
-    about = "SQL Insight MVP collector for MySQL and PostgreSQL diagnostics"
+    about = "SQL Insight collector with unified data contract and scheduler"
 )]
 struct Cli {
     #[arg(long, value_enum, env = "DB_ENGINE", default_value_t = DatabaseEngine::Mysql)]
     engine: DatabaseEngine,
     #[arg(long, value_enum, default_value_t = CollectLevel::Level1)]
     collect_level: CollectLevel,
+    #[arg(long, value_enum, env = "RUN_MODE", default_value_t = RunMode::Once)]
+    run_mode: RunMode,
+    #[arg(long, env = "RUN_INTERVAL_SECS", default_value_t = 60)]
+    interval_secs: u64,
+    #[arg(long, env = "RUN_JITTER_PCT", default_value_t = 0.1)]
+    jitter_pct: f64,
+    #[arg(long, env = "RUN_TIMEOUT_SECS", default_value_t = 120)]
+    timeout_secs: u64,
+    #[arg(long, env = "RUN_RETRY_TIMES", default_value_t = 1)]
+    retry_times: u32,
+    #[arg(long, env = "RUN_RETRY_BACKOFF_MS", default_value_t = 1_000)]
+    retry_backoff_ms: u64,
+    #[arg(long, env = "RUN_MAX_CYCLES")]
+    max_cycles: Option<u32>,
     #[arg(long, env = "MYSQL_URL")]
     mysql_url: Option<String>,
     #[arg(long, env = "POSTGRES_URL")]
@@ -60,7 +81,7 @@ enum CollectLevel {
     Level1,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
 enum ReportFormat {
     Json,
     PrettyJson,
@@ -72,7 +93,7 @@ enum DatabaseEngine {
     Postgres,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct CliOutput {
     engine: String,
     requested_level: String,
@@ -87,6 +108,153 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     init_tracing(cli.verbose);
 
+    let scheduler = SchedulerConfig {
+        mode: cli.run_mode,
+        interval_secs: normalize_u64_limit("interval_secs", cli.interval_secs, 60),
+        jitter_pct: normalize_jitter("jitter_pct", cli.jitter_pct, 0.1),
+        timeout_secs: normalize_u64_limit("timeout_secs", cli.timeout_secs, 120),
+        retry_times: cli.retry_times,
+        retry_backoff_ms: normalize_u64_limit("retry_backoff_ms", cli.retry_backoff_ms, 1_000),
+        max_cycles: cli.max_cycles,
+    };
+    let run_id = new_run_id();
+
+    info!(
+        run_id = run_id,
+        mode = ?scheduler.mode,
+        interval_secs = scheduler.interval_secs,
+        timeout_secs = scheduler.timeout_secs,
+        retry_times = scheduler.retry_times,
+        "scheduler initialized"
+    );
+
+    let mut cycle: u32 = 0;
+    loop {
+        cycle += 1;
+        let cycle_start_ms = now_unix_ms();
+        let mut attempts = Vec::new();
+        let mut payload = None;
+        let total_attempts = scheduler.retry_times.saturating_add(1);
+
+        info!(
+            run_id = run_id,
+            cycle = cycle,
+            engine = ?cli.engine,
+            collect_level = ?cli.collect_level,
+            "collection cycle started"
+        );
+
+        for attempt in 1..=total_attempts {
+            let attempt_start = Instant::now();
+            let attempt_cli = cli.clone();
+            let timeout = Duration::from_secs(scheduler.timeout_secs);
+            let result = run_with_timeout(timeout, move || {
+                collect_once(&attempt_cli).map_err(|it| it.to_string())
+            });
+            let duration_ms = attempt_start.elapsed().as_millis();
+
+            match result {
+                Ok(output) => {
+                    attempts.push(AttemptTrace {
+                        attempt,
+                        duration_ms,
+                        status: "ok".to_string(),
+                        error: None,
+                    });
+                    payload = Some(output);
+                    info!(
+                        run_id = run_id,
+                        cycle = cycle,
+                        attempt = attempt,
+                        duration_ms = duration_ms,
+                        "collection attempt succeeded"
+                    );
+                    break;
+                }
+                Err(err) => {
+                    attempts.push(AttemptTrace {
+                        attempt,
+                        duration_ms,
+                        status: "failed".to_string(),
+                        error: Some(err.clone()),
+                    });
+                    warn!(
+                        run_id = run_id,
+                        cycle = cycle,
+                        attempt = attempt,
+                        duration_ms = duration_ms,
+                        error = err,
+                        "collection attempt failed"
+                    );
+                    if attempt < total_attempts {
+                        thread::sleep(Duration::from_millis(scheduler.retry_backoff_ms));
+                    }
+                }
+            }
+        }
+
+        let cycle_end_ms = now_unix_ms();
+        let last_error = attempts.iter().rev().find_map(|it| it.error.clone());
+        let source_status = payload
+            .as_ref()
+            .map(derive_source_status)
+            .unwrap_or_default();
+        let warnings = payload.as_ref().map(collect_warnings).unwrap_or_default();
+        let selected_level = payload.as_ref().map(|it| it.selected_level.clone());
+        let record = UnifiedCollectionRecord {
+            contract_version: "v1".to_string(),
+            run_id: run_id.clone(),
+            cycle,
+            engine: engine_label(cli.engine).to_string(),
+            requested_level: format!("{}", requested_to_collection_level(cli.collect_level)),
+            selected_level,
+            schedule: scheduler.clone(),
+            window: sql_insight::pipeline::ScheduleWindow {
+                start_unix_ms: cycle_start_ms,
+                end_unix_ms: cycle_end_ms,
+                duration_ms: cycle_end_ms.saturating_sub(cycle_start_ms),
+            },
+            attempts,
+            source_status,
+            warnings,
+            status: if payload.is_some() {
+                "ok".to_string()
+            } else {
+                "failed".to_string()
+            },
+            error: last_error,
+            payload,
+        };
+        emit_record(&record, cli.output)?;
+
+        if scheduler.mode == RunMode::Once {
+            break;
+        }
+        if let Some(max_cycles) = scheduler.max_cycles {
+            if cycle >= max_cycles {
+                info!(
+                    run_id = run_id,
+                    cycle = cycle,
+                    "scheduler reached max cycles"
+                );
+                break;
+            }
+        }
+
+        let sleep_for = jittered_interval(scheduler.interval_secs, scheduler.jitter_pct);
+        info!(
+            run_id = run_id,
+            cycle = cycle,
+            sleep_ms = sleep_for.as_millis() as u64,
+            "scheduler sleeping before next cycle"
+        );
+        thread::sleep(sleep_for);
+    }
+
+    Ok(())
+}
+
+fn collect_once(cli: &Cli) -> anyhow::Result<CliOutput> {
     let table_limit = normalize_limit("table_limit", cli.table_limit, 200);
     let index_limit = normalize_limit("index_limit", cli.index_limit, 500);
     let level0_config = Level0CollectorConfig {
@@ -224,11 +392,8 @@ fn main() -> anyhow::Result<()> {
         );
     }
 
-    let output_payload = CliOutput {
-        engine: match cli.engine {
-            DatabaseEngine::Mysql => "mysql".to_string(),
-            DatabaseEngine::Postgres => "postgres".to_string(),
-        },
+    Ok(CliOutput {
+        engine: engine_label(cli.engine).to_string(),
         requested_level: format!("{}", target_level),
         selected_level: format!("{}", negotiation.selected_level),
         downgrade_reasons: negotiation
@@ -248,14 +413,7 @@ fn main() -> anyhow::Result<()> {
         level0: level0_report,
         postgres_level0: postgres_level0_report,
         level1: level1_report,
-    };
-    let output_text = match cli.output {
-        ReportFormat::Json => serde_json::to_string(&output_payload)?,
-        ReportFormat::PrettyJson => serde_json::to_string_pretty(&output_payload)?,
-    };
-    println!("{output_text}");
-
-    Ok(())
+    })
 }
 
 fn init_tracing(verbose: u8) {
@@ -268,6 +426,90 @@ fn init_tracing(verbose: u8) {
         .with_max_level(level)
         .with_target(false)
         .init();
+}
+
+fn emit_record(
+    record: &UnifiedCollectionRecord<CliOutput>,
+    format: ReportFormat,
+) -> anyhow::Result<()> {
+    let output_text = match format {
+        ReportFormat::Json => serde_json::to_string(record)?,
+        ReportFormat::PrettyJson => serde_json::to_string_pretty(record)?,
+    };
+    println!("{output_text}");
+    Ok(())
+}
+
+fn derive_source_status(output: &CliOutput) -> Vec<SourceStatus> {
+    let mut statuses = vec![
+        SourceStatus {
+            source: "os.basic_metrics".to_string(),
+            ok: output.level0.capability.os_metrics_access,
+        },
+        SourceStatus {
+            source: "mysql.global_status".to_string(),
+            ok: output.level0.capability.mysql_status_access,
+        },
+        SourceStatus {
+            source: "mysql.variables".to_string(),
+            ok: output.level0.capability.mysql_variables_access,
+        },
+        SourceStatus {
+            source: "mysql.information_schema".to_string(),
+            ok: output.level0.capability.information_schema_access,
+        },
+        SourceStatus {
+            source: "mysql.replication_status".to_string(),
+            ok: output.level0.capability.replication_status_access,
+        },
+    ];
+
+    if let Some(level1) = &output.level1 {
+        statuses.push(SourceStatus {
+            source: "mysql.slow_log_hot_switch".to_string(),
+            ok: level1.capability.can_enable_slow_log_hot_switch,
+        });
+        statuses.push(SourceStatus {
+            source: "mysql.slow_log".to_string(),
+            ok: level1.capability.can_read_slow_log,
+        });
+        statuses.push(SourceStatus {
+            source: "mysql.error_log".to_string(),
+            ok: level1.capability.can_read_error_log,
+        });
+    }
+    if let Some(pg) = &output.postgres_level0 {
+        statuses.push(SourceStatus {
+            source: "postgres.global_status".to_string(),
+            ok: pg.capability.has_status_access,
+        });
+        statuses.push(SourceStatus {
+            source: "postgres.settings".to_string(),
+            ok: pg.capability.has_settings_access,
+        });
+        statuses.push(SourceStatus {
+            source: "postgres.storage".to_string(),
+            ok: pg.capability.has_storage_access,
+        });
+        statuses.push(SourceStatus {
+            source: "postgres.replication_status".to_string(),
+            ok: pg.capability.has_replication_status_access,
+        });
+    }
+
+    statuses
+}
+
+fn collect_warnings(output: &CliOutput) -> Vec<String> {
+    let mut warnings = Vec::new();
+    warnings.extend(output.level0.warnings.clone());
+    if let Some(level1) = &output.level1 {
+        warnings.extend(level1.warnings.clone());
+    }
+    if let Some(pg) = &output.postgres_level0 {
+        warnings.extend(pg.warnings.clone());
+    }
+    warnings
 }
 
 fn normalize_limit(name: &str, value: usize, fallback: usize) -> usize {
@@ -300,6 +542,15 @@ fn normalize_f64_limit(name: &str, value: f64, fallback: f64) -> f64 {
             name,
             value, fallback, "invalid non-positive value, fallback applied"
         );
+        fallback
+    } else {
+        value
+    }
+}
+
+fn normalize_jitter(name: &str, value: f64, fallback: f64) -> f64 {
+    if value < 0.0 || value >= 1.0 {
+        warn!(name, value, fallback, "invalid jitter, fallback applied");
         fallback
     } else {
         value
@@ -379,5 +630,12 @@ fn map_reason_for_engine(engine: DatabaseEngine, reason: &str) -> String {
 fn log_report_warnings(scope: &str, warnings: &[String]) {
     for message in warnings {
         warn!(scope, warning = %message, "collector warning");
+    }
+}
+
+fn engine_label(engine: DatabaseEngine) -> &'static str {
+    match engine {
+        DatabaseEngine::Mysql => "mysql",
+        DatabaseEngine::Postgres => "postgres",
     }
 }
