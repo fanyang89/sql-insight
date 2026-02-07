@@ -7,7 +7,9 @@ use sql_insight::collection::{
     CapabilityProbe, CollectionLevel, CollectionPolicy, negotiate_collection_level,
 };
 use sql_insight::level0::{Level0CollectionReport, Level0CollectorConfig, collect_level0};
-use sql_insight::level1::{Level1CollectionReport, Level1CollectorConfig, collect_level1};
+use sql_insight::level1::{
+    Level1CollectionReport, Level1CollectorConfig, Level1Engine, collect_level1,
+};
 use sql_insight::pipeline::{
     AttemptTrace, RunMode, SchedulerConfig, SourceStatus, UnifiedCollectionRecord,
     jittered_interval, new_run_id, now_unix_ms, run_with_timeout,
@@ -299,9 +301,7 @@ fn collect_once(cli: &Cli) -> anyhow::Result<CliOutput> {
         None
     };
 
-    let level1_report = if cli.collect_level == CollectLevel::Level1
-        && cli.engine == DatabaseEngine::Mysql
-    {
+    let level1_report = if cli.collect_level == CollectLevel::Level1 {
         let slow_log_window_secs =
             normalize_u64_limit("slow_log_window_secs", cli.slow_log_window_secs, 30);
         let slow_log_long_query_time_secs = normalize_f64_limit(
@@ -310,7 +310,13 @@ fn collect_once(cli: &Cli) -> anyhow::Result<CliOutput> {
             0.2,
         );
         let level1_config = Level1CollectorConfig {
+            engine: if cli.engine == DatabaseEngine::Mysql {
+                Level1Engine::Mysql
+            } else {
+                Level1Engine::Postgres
+            },
             mysql_url: cli.mysql_url.clone(),
+            postgres_url: cli.postgres_url.clone(),
             slow_log_window_secs,
             slow_log_long_query_time_secs,
             enable_slow_log_hot_switch: !cli.no_slow_log_hot_switch,
@@ -334,6 +340,7 @@ fn collect_once(cli: &Cli) -> anyhow::Result<CliOutput> {
             ),
         };
         info!(
+            engine = ?cli.engine,
             slow_log_window_secs = level1_config.slow_log_window_secs,
             slow_log_long_query_time_secs = level1_config.slow_log_long_query_time_secs,
             enable_slow_log_hot_switch = level1_config.enable_slow_log_hot_switch,
@@ -343,9 +350,6 @@ fn collect_once(cli: &Cli) -> anyhow::Result<CliOutput> {
         let report = collect_level1(&level1_config);
         log_report_warnings("level1", &report.warnings);
         Some(report)
-    } else if cli.collect_level == CollectLevel::Level1 && cli.engine == DatabaseEngine::Postgres {
-        warn!("level1 collector is currently mysql-only; postgres request will downgrade");
-        None
     } else {
         None
     };
@@ -442,42 +446,58 @@ fn emit_record(
 }
 
 fn derive_source_status(output: &CliOutput) -> Vec<SourceStatus> {
-    let mut statuses = vec![
-        SourceStatus {
-            source: "os.basic_metrics".to_string(),
-            ok: output.level0.capability.os_metrics_access,
-        },
-        SourceStatus {
+    let mut statuses = vec![SourceStatus {
+        source: "os.basic_metrics".to_string(),
+        ok: output.level0.capability.os_metrics_access,
+    }];
+
+    if output.engine == "mysql" {
+        statuses.push(SourceStatus {
             source: "mysql.global_status".to_string(),
             ok: output.level0.capability.mysql_status_access,
-        },
-        SourceStatus {
+        });
+        statuses.push(SourceStatus {
             source: "mysql.variables".to_string(),
             ok: output.level0.capability.mysql_variables_access,
-        },
-        SourceStatus {
+        });
+        statuses.push(SourceStatus {
             source: "mysql.information_schema".to_string(),
             ok: output.level0.capability.information_schema_access,
-        },
-        SourceStatus {
+        });
+        statuses.push(SourceStatus {
             source: "mysql.replication_status".to_string(),
             ok: output.level0.capability.replication_status_access,
-        },
-    ];
+        });
+    }
 
     if let Some(level1) = &output.level1 {
-        statuses.push(SourceStatus {
-            source: "mysql.slow_log_hot_switch".to_string(),
-            ok: level1.capability.can_enable_slow_log_hot_switch,
-        });
-        statuses.push(SourceStatus {
-            source: "mysql.slow_log".to_string(),
-            ok: level1.capability.can_read_slow_log,
-        });
-        statuses.push(SourceStatus {
-            source: "mysql.error_log".to_string(),
-            ok: level1.capability.can_read_error_log,
-        });
+        if output.engine == "postgres" {
+            statuses.push(SourceStatus {
+                source: "postgres.statement_log_hot_switch".to_string(),
+                ok: level1.capability.can_enable_slow_log_hot_switch,
+            });
+            statuses.push(SourceStatus {
+                source: "postgres.statement_log".to_string(),
+                ok: level1.capability.can_read_slow_log,
+            });
+            statuses.push(SourceStatus {
+                source: "postgres.error_log".to_string(),
+                ok: level1.capability.can_read_error_log,
+            });
+        } else {
+            statuses.push(SourceStatus {
+                source: "mysql.slow_log_hot_switch".to_string(),
+                ok: level1.capability.can_enable_slow_log_hot_switch,
+            });
+            statuses.push(SourceStatus {
+                source: "mysql.slow_log".to_string(),
+                ok: level1.capability.can_read_slow_log,
+            });
+            statuses.push(SourceStatus {
+                source: "mysql.error_log".to_string(),
+                ok: level1.capability.can_read_error_log,
+            });
+        }
     }
     if let Some(pg) = &output.postgres_level0 {
         statuses.push(SourceStatus {
@@ -597,9 +617,15 @@ fn build_capability_probe(
                 has_information_schema_access: pg.capability.has_storage_access,
                 has_replication_status_access: pg.capability.has_replication_status_access,
                 has_os_metrics_access: mysql_level0.capability.os_metrics_access,
-                can_enable_slow_log_hot_switch: false,
-                can_read_slow_log: false,
-                can_read_error_log: false,
+                can_enable_slow_log_hot_switch: mysql_level1
+                    .map(|it| it.capability.can_enable_slow_log_hot_switch)
+                    .unwrap_or(false),
+                can_read_slow_log: mysql_level1
+                    .map(|it| it.capability.can_read_slow_log)
+                    .unwrap_or(false),
+                can_read_error_log: mysql_level1
+                    .map(|it| it.capability.can_read_error_log)
+                    .unwrap_or(false),
                 ..CapabilityProbe::default()
             }
         }
@@ -618,11 +644,13 @@ fn map_reason_for_engine(engine: DatabaseEngine, reason: &str) -> String {
             "missing replication status access" => {
                 "missing pg_stat_replication/pg_stat_wal_receiver access".to_string()
             }
-            "cannot hot-enable slow log" => "postgres Level 1 is not implemented yet".to_string(),
-            "cannot collect slow log for digest aggregation" => {
-                "postgres Level 1 is not implemented yet".to_string()
+            "cannot hot-enable slow log" => {
+                "cannot hot-enable log_min_duration_statement (ALTER SYSTEM + reload)".to_string()
             }
-            "cannot collect error log" => "postgres Level 1 is not implemented yet".to_string(),
+            "cannot collect slow log for digest aggregation" => {
+                "cannot collect statement log for digest aggregation".to_string()
+            }
+            "cannot collect error log" => "cannot collect PostgreSQL log alerts".to_string(),
             other => other.to_string(),
         },
     }

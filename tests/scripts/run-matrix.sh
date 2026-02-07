@@ -113,22 +113,42 @@ run_postgres_level0_case() {
   assert_jq "${output}" '.payload.postgres_level0.capability.has_storage_access == true' "postgres ${tag} storage access"
 }
 
-run_postgres_level1_downgrade_case() {
-  local tag="$1"
-  local port="$2"
-  local output="${RESULTS_DIR}/postgres_${tag}_level1_downgrade.json"
+run_postgres_level1_case() {
+  local service="$1"
+  local tag="$2"
+  local port="$3"
+  local log_path="${ROOT_DIR}/tests/artifacts/postgres${tag}/postgresql.log"
+  local output="${RESULTS_DIR}/postgres_${tag}_level1.json"
 
-  echo "[case] postgres ${tag} level1 downgrade"
+  echo "[case] postgres ${tag} level1"
+  inject_postgres_error_alerts "${service}"
+
+  (
+    sleep 1
+    run_postgres_workload "${service}"
+  ) &
+  local workload_pid=$!
+
   run_collector "${output}" \
     --engine postgres \
     --collect-level level1 \
     --run-mode once \
     --postgres-url "postgres://postgres:postgres@127.0.0.1:${port}/app" \
+    --slow-log-window-secs 5 \
+    --slow-log-long-query-time-secs 0.1 \
+    --slow-log-path "${log_path}" \
+    --error-log-path "${log_path}" \
     --output json
+  wait "${workload_pid}"
 
-  assert_jq "${output}" '.status == "ok"' "postgres ${tag} downgrade record status"
-  assert_jq "${output}" '.selected_level == "Level 0"' "postgres ${tag} downgraded to level 0"
-  assert_jq "${output}" '(.payload.downgrade_reasons | join(" ") | contains("postgres Level 1 is not implemented yet")) == true' "postgres ${tag} downgrade reason emitted"
+  assert_jq "${output}" '.status == "ok"' "postgres ${tag} level1 record status"
+  assert_jq "${output}" '.selected_level == "Level 1"' "postgres ${tag} selected level 1"
+  assert_jq "${output}" '.payload.level1 != null' "postgres ${tag} level1 payload present"
+  assert_jq "${output}" '.payload.level1.capability.can_enable_slow_log_hot_switch == true' "postgres ${tag} hot-switch capability"
+  assert_jq "${output}" '.payload.level1.capability.can_read_slow_log == true' "postgres ${tag} statement log readable"
+  assert_jq "${output}" '.payload.level1.capability.can_read_error_log == true' "postgres ${tag} error log readable"
+  assert_jq "${output}" '.payload.level1.slow_log.digest_count >= 1' "postgres ${tag} statement digest generated"
+  assert_jq "${output}" '([.payload.level1.error_log.alerts[].category] | index("deadlock")) != null' "postgres ${tag} deadlock alert detected"
 }
 
 run_mysql_level0_case "5_7" "3307"
@@ -138,6 +158,6 @@ run_mysql_level1_case "mysql80" "mysql80" "3308"
 
 run_postgres_level0_case "postgres14" "14" "5433"
 run_postgres_level0_case "postgres16" "16" "5434"
-run_postgres_level1_downgrade_case "16" "5434"
+run_postgres_level1_case "postgres16" "16" "5434"
 
 echo "[result] all matrix cases passed"

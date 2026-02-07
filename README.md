@@ -8,7 +8,7 @@ Through SQLs, we turn EXPLAIN into action.
 Current implementation delivers:
 
 - **MySQL 5.x / 8.x**: Level 0 + Level 1
-- **PostgreSQL**: Level 0
+- **PostgreSQL 14+**: Level 0 + Level 1
 
 ## Current MVP Scope (Level 0)
 
@@ -30,6 +30,10 @@ Current implementation delivers:
   - `SET GLOBAL slow_query_log = ON`
   - configurable `long_query_time`
   - windowed capture with optional restore of original settings
+- PostgreSQL statement-log hot-switch collection:
+  - `ALTER SYSTEM SET log_min_duration_statement`
+  - `SELECT pg_reload_conf()`
+  - windowed capture with optional restore of original settings
 - Slow log digest aggregation:
   - SQL fingerprint normalization
   - grouped counts, latency totals/averages, rows examined/sent
@@ -46,7 +50,9 @@ Current implementation delivers:
   - `pg_settings`
   - relation and index metadata (`pg_class`/`pg_namespace`/`pg_indexes`)
   - replication state (`pg_stat_replication`, `pg_stat_wal_receiver`, `pg_is_in_recovery()`)
-- Level 1 is currently MySQL-only and PostgreSQL requests will auto-downgrade to Level 0.
+- Level 1 lightweight diagnostics:
+  - statement log window capture + digest aggregation
+  - error log alert extraction (`deadlock`, `crash_recovery`, `purge/vacuum`, `replication`)
 
 ## Project Layout
 
@@ -84,6 +90,12 @@ Run PostgreSQL Level 0:
 
 ```bash
 POSTGRES_URL='postgres://user:pass@127.0.0.1:5432/postgres' cargo run -- --engine postgres --collect-level level0 --output pretty-json -v
+```
+
+Run PostgreSQL Level 1:
+
+```bash
+POSTGRES_URL='postgres://user:pass@127.0.0.1:5432/postgres' cargo run -- --engine postgres --collect-level level1 --slow-log-path /var/log/postgresql/postgresql.log --error-log-path /var/log/postgresql/postgresql.log --output pretty-json -v
 ```
 
 Without `MYSQL_URL`, the tool skips MySQL collection and keeps available local OS metrics.
@@ -144,12 +156,11 @@ The script validates:
 - collector compatibility by database/version
 - Level 0 capability extraction
 - MySQL Level 1 slow-log digest and error-log alert collection
-- PostgreSQL Level 1 auto-downgrade behavior
+- PostgreSQL Level 1 statement-log digest and error-log alert collection
 
 Set `KEEP_CONTAINERS=1` to keep containers running after the script exits.
 
 ## Roadmap
 
-- PostgreSQL Level 1: statement log + digest + alert extraction
 - Level 2: `performance_schema` and `sys` enhanced diagnostics (MySQL), `pg_stat_statements` path (PostgreSQL)
 - Level 3: expert-mode short-window deep sampling (`tcpdump` / `perf` / `strace`)

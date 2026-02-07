@@ -47,6 +47,18 @@ services:
   postgres14:
     image: postgres:14
     container_name: sql-insight-postgres14
+    command:
+      - postgres
+      - -c
+      - logging_collector=on
+      - -c
+      - log_destination=stderr
+      - -c
+      - log_directory=/var/log/postgresql
+      - -c
+      - log_filename=postgresql.log
+      - -c
+      - log_min_duration_statement=200ms
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -55,6 +67,7 @@ services:
       - "5433:5432"
     volumes:
       - ./postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ../artifacts/postgres14:/var/log/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d app"]
       interval: 5s
@@ -64,6 +77,18 @@ services:
   postgres16:
     image: postgres:16
     container_name: sql-insight-postgres16
+    command:
+      - postgres
+      - -c
+      - logging_collector=on
+      - -c
+      - log_destination=stderr
+      - -c
+      - log_directory=/var/log/postgresql
+      - -c
+      - log_filename=postgresql.log
+      - -c
+      - log_min_duration_statement=200ms
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -72,6 +97,7 @@ services:
       - "5434:5432"
     volumes:
       - ./postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ../artifacts/postgres16:/var/log/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d app"]
       interval: 5s

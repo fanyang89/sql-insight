@@ -45,13 +45,16 @@ ensure_test_dirs() {
   mkdir -p "${ROOT_DIR}/tests/artifacts"
   # Bind-mounted files can become unwritable on host; repair ownership via a short-lived container.
   docker run --rm -v "${ROOT_DIR}/tests/artifacts:/artifacts" alpine:3.20 sh -lc "
-    rm -rf /artifacts/mysql57 /artifacts/mysql80
-    mkdir -p /artifacts/mysql57 /artifacts/mysql80 /artifacts/results
+    rm -rf /artifacts/mysql57 /artifacts/mysql80 /artifacts/postgres14 /artifacts/postgres16
+    mkdir -p /artifacts/mysql57 /artifacts/mysql80 /artifacts/postgres14 /artifacts/postgres16 /artifacts/results
     : > /artifacts/mysql57/slow.log
     : > /artifacts/mysql57/error.log
     : > /artifacts/mysql80/slow.log
     : > /artifacts/mysql80/error.log
+    : > /artifacts/postgres14/postgresql.log
+    : > /artifacts/postgres16/postgresql.log
     chown -R ${uid}:${gid} /artifacts
+    chmod -R 0777 /artifacts
   " >/dev/null
 }
 
@@ -87,4 +90,18 @@ inject_mysql_error_alerts() {
   compose exec -T "${service}" sh -lc "echo 'InnoDB: Deadlock found when trying to get lock' >> /var/log/mysql/error.log"
   compose exec -T "${service}" sh -lc "echo 'InnoDB: Starting crash recovery from checkpoint' >> /var/log/mysql/error.log"
   compose exec -T "${service}" sh -lc "echo 'replication applier thread stopped with error' >> /var/log/mysql/error.log"
+}
+
+run_postgres_workload() {
+  local service="$1"
+  for i in 1 2 3 4; do
+    compose exec -T "${service}" psql -U postgres -d app -c "SELECT pg_sleep(0.35); SELECT COUNT(*) FROM orders WHERE user_id=${i};" >/dev/null
+  done
+}
+
+inject_postgres_error_alerts() {
+  local service="$1"
+  compose exec -T "${service}" sh -lc "echo 'ERROR: deadlock detected' >> /var/log/postgresql/postgresql.log"
+  compose exec -T "${service}" sh -lc "echo 'LOG: database system is starting up' >> /var/log/postgresql/postgresql.log"
+  compose exec -T "${service}" sh -lc "echo 'LOG: wal receiver process terminated' >> /var/log/postgresql/postgresql.log"
 }
