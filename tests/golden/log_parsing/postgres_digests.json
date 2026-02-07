@@ -1,0 +1,22 @@
+[
+  {
+    "fingerprint": "select * from orders where amount > ?;",
+    "sample_sql": "SELECT * FROM orders WHERE amount > 99.9;",
+    "count": 1,
+    "total_query_time_secs": 0.9,
+    "avg_query_time_secs": 0.9,
+    "total_lock_time_secs": 0.0,
+    "total_rows_sent": 0,
+    "total_rows_examined": 0
+  },
+  {
+    "fingerprint": "select * from orders where user_id = ?;",
+    "sample_sql": "SELECT * FROM orders WHERE user_id = 1;",
+    "count": 2,
+    "total_query_time_secs": 0.751123,
+    "avg_query_time_secs": 0.3755615,
+    "total_lock_time_secs": 0.0,
+    "total_rows_sent": 0,
+    "total_rows_examined": 0
+  }
+]

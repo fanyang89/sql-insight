@@ -1,0 +1,31 @@
+[
+  {
+    "category": "replication",
+    "count": 2,
+    "sample_lines": [
+      "2026-02-07T12:00:02.000000Z 0 [Warning] replication applier thread stopped with error",
+      "2026-02-07T12:00:04.000000Z 0 [Warning] group replication member state changed"
+    ]
+  },
+  {
+    "category": "crash_recovery",
+    "count": 1,
+    "sample_lines": [
+      "2026-02-07T12:00:01.000000Z 0 [System] InnoDB: Starting crash recovery from checkpoint"
+    ]
+  },
+  {
+    "category": "deadlock",
+    "count": 1,
+    "sample_lines": [
+      "2026-02-07T12:00:00.000000Z 0 [Warning] InnoDB: Deadlock found when trying to get lock"
+    ]
+  },
+  {
+    "category": "purge",
+    "count": 1,
+    "sample_lines": [
+      "2026-02-07T12:00:03.000000Z 0 [Warning] InnoDB: purge lag increased"
+    ]
+  }
+]

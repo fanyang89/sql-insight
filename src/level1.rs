@@ -1,4 +1,3 @@
-use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{self, Read, Seek, SeekFrom};
@@ -734,11 +733,13 @@ fn aggregate_slow_sql_digests(entries: Vec<SlowLogEntry>) -> Vec<SlowSqlDigest> 
         })
         .collect::<Vec<_>>();
 
-    digests.sort_by_key(|it| {
-        (
-            Reverse((it.total_query_time_secs * 1_000_000.0) as u64),
-            Reverse(it.count),
-        )
+    digests.sort_by(|a, b| {
+        let a_time = (a.total_query_time_secs * 1_000_000.0) as u64;
+        let b_time = (b.total_query_time_secs * 1_000_000.0) as u64;
+        b_time
+            .cmp(&a_time)
+            .then_with(|| b.count.cmp(&a.count))
+            .then_with(|| a.fingerprint.cmp(&b.fingerprint))
     });
     digests
 }
@@ -843,7 +844,11 @@ fn extract_error_log_alerts(lines: &[String]) -> Vec<ErrorAlert> {
             sample_lines: agg.sample_lines,
         })
         .collect::<Vec<_>>();
-    alerts.sort_by_key(|it| Reverse(it.count));
+    alerts.sort_by(|a, b| {
+        b.count
+            .cmp(&a.count)
+            .then_with(|| a.category.cmp(&b.category))
+    });
     alerts
 }
 
@@ -939,6 +944,24 @@ fn now_unix_ms() -> u128 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::path::Path;
+
+    fn fixture_path(relative: &str) -> String {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(relative)
+            .to_string_lossy()
+            .to_string()
+    }
+
+    fn read_text(relative: &str) -> String {
+        fs::read_to_string(fixture_path(relative)).expect("failed reading fixture text")
+    }
+
+    fn read_json(relative: &str) -> serde_json::Value {
+        let text = read_text(relative);
+        serde_json::from_str(&text).expect("failed parsing fixture json")
+    }
 
     #[test]
     fn should_aggregate_slow_log_by_fingerprint() {
@@ -999,6 +1022,54 @@ SELECT * FROM orders WHERE id = 101;
         assert_eq!(
             fp,
             "select * from t where user_id = ? and name = ? and score > ?"
+        );
+    }
+
+    #[test]
+    fn should_match_log_parsing_golden_fixtures() {
+        let mysql_slow = read_text("tests/fixtures/logs/mysql_slow.log");
+        let mysql_digests = aggregate_slow_sql_digests(parse_mysql_slow_log_entries(&mysql_slow));
+        let mysql_digests_value =
+            serde_json::to_value(mysql_digests).expect("serialize mysql digests");
+        assert_eq!(
+            mysql_digests_value,
+            read_json("tests/golden/log_parsing/mysql_digests.json")
+        );
+
+        let mysql_error = read_text("tests/fixtures/logs/mysql_error.log");
+        let mysql_error_lines = mysql_error
+            .lines()
+            .map(|it| it.trim().to_string())
+            .filter(|it| !it.is_empty())
+            .collect::<Vec<_>>();
+        let mysql_alerts = extract_error_log_alerts(&mysql_error_lines);
+        let mysql_alerts_value =
+            serde_json::to_value(mysql_alerts).expect("serialize mysql alerts");
+        assert_eq!(
+            mysql_alerts_value,
+            read_json("tests/golden/log_parsing/mysql_alerts.json")
+        );
+
+        let pg_statement = read_text("tests/fixtures/logs/postgres_statement.log");
+        let pg_digests =
+            aggregate_slow_sql_digests(parse_postgres_statement_log_entries(&pg_statement));
+        let pg_digests_value = serde_json::to_value(pg_digests).expect("serialize pg digests");
+        assert_eq!(
+            pg_digests_value,
+            read_json("tests/golden/log_parsing/postgres_digests.json")
+        );
+
+        let pg_error = read_text("tests/fixtures/logs/postgres_error.log");
+        let pg_error_lines = pg_error
+            .lines()
+            .map(|it| it.trim().to_string())
+            .filter(|it| !it.is_empty())
+            .collect::<Vec<_>>();
+        let pg_alerts = extract_error_log_alerts(&pg_error_lines);
+        let pg_alerts_value = serde_json::to_value(pg_alerts).expect("serialize pg alerts");
+        assert_eq!(
+            pg_alerts_value,
+            read_json("tests/golden/log_parsing/postgres_alerts.json")
         );
     }
 }

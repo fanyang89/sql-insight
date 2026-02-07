@@ -1,0 +1,22 @@
+[
+  {
+    "fingerprint": "select * from orders where id = ?;",
+    "sample_sql": "SELECT * FROM orders WHERE id = 100;",
+    "count": 2,
+    "total_query_time_secs": 2.0,
+    "avg_query_time_secs": 1.0,
+    "total_lock_time_secs": 0.012,
+    "total_rows_sent": 2,
+    "total_rows_examined": 190
+  },
+  {
+    "fingerprint": "select count(*) from orders where user_id = ?;",
+    "sample_sql": "SELECT COUNT(*) FROM orders WHERE user_id = 1;",
+    "count": 1,
+    "total_query_time_secs": 0.3,
+    "avg_query_time_secs": 0.3,
+    "total_lock_time_secs": 0.001,
+    "total_rows_sent": 1,
+    "total_rows_examined": 40
+  }
+]

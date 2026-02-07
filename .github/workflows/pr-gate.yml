@@ -1,0 +1,48 @@
+name: PR Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  smoke-matrix:
+    name: Smoke Matrix + Contract Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install jq
+        run: |
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y jq
+          fi
+
+      - name: Unit and parser regression tests
+        run: cargo test --quiet
+
+      - name: Smoke compatibility matrix
+        run: MATRIX_PROFILE=smoke bash tests/scripts/run-matrix.sh
+
+      - name: Contract schema + golden gate
+        run: CONTRACT_PROFILE=smoke bash tests/scripts/check-contract.sh
+
+      - name: Upload matrix artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-smoke-matrix-artifacts
+          path: tests/artifacts
+          if-no-files-found: ignore

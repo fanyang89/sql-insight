@@ -1,17 +1,15 @@
-name: Compatibility Matrix
+name: Nightly Full Matrix
 
 on:
-  pull_request:
-  push:
-    branches:
-      - main
+  schedule:
+    - cron: "20 2 * * *"
   workflow_dispatch:
 
 jobs:
-  collector-matrix:
-    name: Collector Matrix (MySQL 5/8 + PostgreSQL 14/16)
+  full-matrix:
+    name: Full Matrix + Contract Gate
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -30,24 +28,19 @@ jobs:
             sudo apt-get install -y jq
           fi
 
-      - name: Print tool versions
-        run: |
-          rustc --version
-          cargo --version
-          docker --version
-          docker compose version
-          jq --version
-
-      - name: Run unit tests
+      - name: Unit and parser regression tests
         run: cargo test --quiet
 
-      - name: Run compatibility matrix
-        run: bash tests/scripts/run-matrix.sh
+      - name: Full compatibility matrix
+        run: MATRIX_PROFILE=full bash tests/scripts/run-matrix.sh
+
+      - name: Contract schema + golden gate
+        run: CONTRACT_PROFILE=full bash tests/scripts/check-contract.sh
 
       - name: Upload matrix artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: matrix-artifacts
+          name: nightly-full-matrix-artifacts
           path: tests/artifacts
           if-no-files-found: ignore

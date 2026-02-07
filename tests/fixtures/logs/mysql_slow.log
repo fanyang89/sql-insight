@@ -1,0 +1,12 @@
+# Time: 2026-02-07T12:00:00.100000Z
+# Query_time: 1.200 Lock_time: 0.010 Rows_sent: 1 Rows_examined: 100
+SET timestamp=1770430000;
+SELECT * FROM orders WHERE id = 100;
+# Time: 2026-02-07T12:00:02.100000Z
+# Query_time: 0.800 Lock_time: 0.002 Rows_sent: 1 Rows_examined: 90
+SET timestamp=1770430002;
+SELECT * FROM orders WHERE id = 101;
+# Time: 2026-02-07T12:00:04.100000Z
+# Query_time: 0.300 Lock_time: 0.001 Rows_sent: 1 Rows_examined: 40
+SET timestamp=1770430004;
+SELECT COUNT(*) FROM orders WHERE user_id = 1;

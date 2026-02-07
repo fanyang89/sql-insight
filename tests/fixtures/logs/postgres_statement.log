@@ -1,0 +1,4 @@
+2026-02-07 16:00:01.123 UTC [77] postgres@app LOG:  duration: 350.123 ms  statement: SELECT * FROM orders WHERE user_id = 1;
+2026-02-07 16:00:01.456 UTC [77] postgres@app LOG:  duration: 401.000 ms
+2026-02-07 16:00:01.456 UTC [77] postgres@app STATEMENT:  SELECT * FROM orders WHERE user_id = 2;
+2026-02-07 16:00:02.000 UTC [77] postgres@app LOG:  duration: 0.900 s  statement: SELECT * FROM orders WHERE amount > 99.9;

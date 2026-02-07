@@ -1,0 +1,31 @@
+[
+  {
+    "category": "replication",
+    "count": 2,
+    "sample_lines": [
+      "2026-02-07 16:00:05 UTC [77] LOG: wal receiver process terminated",
+      "2026-02-07 16:00:07 UTC [77] LOG: replication slot \"sub_a\" is active"
+    ]
+  },
+  {
+    "category": "crash_recovery",
+    "count": 1,
+    "sample_lines": [
+      "2026-02-07 16:00:04 UTC [77] LOG: database system is starting up"
+    ]
+  },
+  {
+    "category": "deadlock",
+    "count": 1,
+    "sample_lines": [
+      "2026-02-07 16:00:03 UTC [77] ERROR: deadlock detected"
+    ]
+  },
+  {
+    "category": "purge",
+    "count": 1,
+    "sample_lines": [
+      "2026-02-07 16:00:06 UTC [77] LOG: automatic vacuum of table \"public.orders\" complete"
+    ]
+  }
+]

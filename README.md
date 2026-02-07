@@ -151,6 +151,12 @@ Run the multi-version database matrix test (MySQL 5.7/8.0 + PostgreSQL 14/16):
 bash tests/scripts/run-matrix.sh
 ```
 
+Run smoke matrix (PR fast gate):
+
+```bash
+MATRIX_PROFILE=smoke bash tests/scripts/run-matrix.sh
+```
+
 The script validates:
 
 - collector compatibility by database/version
@@ -159,6 +165,30 @@ The script validates:
 - PostgreSQL Level 1 statement-log digest and error-log alert collection
 
 Set `KEEP_CONTAINERS=1` to keep containers running after the script exits.
+
+## Contract Regression Gate
+
+Validate matrix outputs against the `v1` JSON schema and golden summary:
+
+```bash
+bash tests/scripts/check-contract.sh
+```
+
+Use `CONTRACT_PROFILE=smoke` for PR smoke outputs.
+
+Schema file:
+
+- `contracts/unified-record-v1.schema.json`
+
+Golden summary baseline:
+
+- `tests/contracts/golden/matrix-summary.full.json`
+- `tests/contracts/golden/matrix-summary.smoke.json`
+
+CI applies this in two layers:
+
+- PR gate: unit tests + parser regression + smoke matrix + contract gate
+- Nightly gate: unit tests + full matrix + contract gate
 
 ## Roadmap
 

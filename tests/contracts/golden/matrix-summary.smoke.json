@@ -1,0 +1,186 @@
+[
+  {
+    "file": "mysql_8_0_level0.json",
+    "contract_version": "v1",
+    "engine": "mysql",
+    "requested_level": "Level 0",
+    "selected_level": "Level 0",
+    "status": "ok",
+    "source_status": [
+      {
+        "source": "mysql.global_status",
+        "ok": true
+      },
+      {
+        "source": "mysql.information_schema",
+        "ok": true
+      },
+      {
+        "source": "mysql.replication_status",
+        "ok": true
+      },
+      {
+        "source": "mysql.variables",
+        "ok": true
+      },
+      {
+        "source": "os.basic_metrics",
+        "ok": true
+      }
+    ],
+    "level1": {
+      "enabled": false,
+      "hot_switch_ok": false,
+      "slow_log_ok": false,
+      "error_log_ok": false,
+      "digest_count_ge_1": false,
+      "alert_categories": []
+    }
+  },
+  {
+    "file": "mysql_mysql80_level1.json",
+    "contract_version": "v1",
+    "engine": "mysql",
+    "requested_level": "Level 1",
+    "selected_level": "Level 1",
+    "status": "ok",
+    "source_status": [
+      {
+        "source": "mysql.error_log",
+        "ok": true
+      },
+      {
+        "source": "mysql.global_status",
+        "ok": true
+      },
+      {
+        "source": "mysql.information_schema",
+        "ok": true
+      },
+      {
+        "source": "mysql.replication_status",
+        "ok": true
+      },
+      {
+        "source": "mysql.slow_log",
+        "ok": true
+      },
+      {
+        "source": "mysql.slow_log_hot_switch",
+        "ok": true
+      },
+      {
+        "source": "mysql.variables",
+        "ok": true
+      },
+      {
+        "source": "os.basic_metrics",
+        "ok": true
+      }
+    ],
+    "level1": {
+      "enabled": true,
+      "hot_switch_ok": true,
+      "slow_log_ok": true,
+      "error_log_ok": true,
+      "digest_count_ge_1": true,
+      "alert_categories": [
+        "crash_recovery",
+        "deadlock",
+        "replication"
+      ]
+    }
+  },
+  {
+    "file": "postgres_16_level0.json",
+    "contract_version": "v1",
+    "engine": "postgres",
+    "requested_level": "Level 0",
+    "selected_level": "Level 0",
+    "status": "ok",
+    "source_status": [
+      {
+        "source": "os.basic_metrics",
+        "ok": true
+      },
+      {
+        "source": "postgres.global_status",
+        "ok": true
+      },
+      {
+        "source": "postgres.replication_status",
+        "ok": true
+      },
+      {
+        "source": "postgres.settings",
+        "ok": true
+      },
+      {
+        "source": "postgres.storage",
+        "ok": true
+      }
+    ],
+    "level1": {
+      "enabled": false,
+      "hot_switch_ok": false,
+      "slow_log_ok": false,
+      "error_log_ok": false,
+      "digest_count_ge_1": false,
+      "alert_categories": []
+    }
+  },
+  {
+    "file": "postgres_16_level1.json",
+    "contract_version": "v1",
+    "engine": "postgres",
+    "requested_level": "Level 1",
+    "selected_level": "Level 1",
+    "status": "ok",
+    "source_status": [
+      {
+        "source": "os.basic_metrics",
+        "ok": true
+      },
+      {
+        "source": "postgres.error_log",
+        "ok": true
+      },
+      {
+        "source": "postgres.global_status",
+        "ok": true
+      },
+      {
+        "source": "postgres.replication_status",
+        "ok": true
+      },
+      {
+        "source": "postgres.settings",
+        "ok": true
+      },
+      {
+        "source": "postgres.statement_log",
+        "ok": true
+      },
+      {
+        "source": "postgres.statement_log_hot_switch",
+        "ok": true
+      },
+      {
+        "source": "postgres.storage",
+        "ok": true
+      }
+    ],
+    "level1": {
+      "enabled": true,
+      "hot_switch_ok": true,
+      "slow_log_ok": true,
+      "error_log_ok": true,
+      "digest_count_ge_1": true,
+      "alert_categories": [
+        "crash_recovery",
+        "deadlock",
+        "replication"
+      ]
+    }
+  }
+]

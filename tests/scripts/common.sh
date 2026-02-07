@@ -46,6 +46,7 @@ ensure_test_dirs() {
   # Bind-mounted files can become unwritable on host; repair ownership via a short-lived container.
   docker run --rm -v "${ROOT_DIR}/tests/artifacts:/artifacts" alpine:3.20 sh -lc "
     rm -rf /artifacts/mysql57 /artifacts/mysql80 /artifacts/postgres14 /artifacts/postgres16
+    rm -rf /artifacts/results
     mkdir -p /artifacts/mysql57 /artifacts/mysql80 /artifacts/postgres14 /artifacts/postgres16 /artifacts/results
     : > /artifacts/mysql57/slow.log
     : > /artifacts/mysql57/error.log

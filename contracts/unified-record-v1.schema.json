@@ -1,0 +1,317 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sql-insight.local/contracts/unified-record-v1.schema.json",
+  "title": "Unified Collection Record v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "contract_version",
+    "run_id",
+    "cycle",
+    "engine",
+    "requested_level",
+    "selected_level",
+    "schedule",
+    "window",
+    "attempts",
+    "source_status",
+    "warnings",
+    "status",
+    "error",
+    "payload"
+  ],
+  "properties": {
+    "contract_version": { "const": "v1" },
+    "run_id": { "type": "string" },
+    "cycle": { "type": "integer", "minimum": 1 },
+    "engine": { "type": "string" },
+    "requested_level": { "type": "string" },
+    "selected_level": { "type": ["string", "null"] },
+    "status": { "type": "string" },
+    "error": { "type": ["string", "null"] },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "schedule": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "mode",
+        "interval_secs",
+        "jitter_pct",
+        "timeout_secs",
+        "retry_times",
+        "retry_backoff_ms",
+        "max_cycles"
+      ],
+      "properties": {
+        "mode": { "type": "string" },
+        "interval_secs": { "type": "integer", "minimum": 1 },
+        "jitter_pct": { "type": "number" },
+        "timeout_secs": { "type": "integer", "minimum": 1 },
+        "retry_times": { "type": "integer", "minimum": 0 },
+        "retry_backoff_ms": { "type": "integer", "minimum": 1 },
+        "max_cycles": { "type": ["integer", "null"], "minimum": 1 }
+      }
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["start_unix_ms", "end_unix_ms", "duration_ms"],
+      "properties": {
+        "start_unix_ms": { "type": "integer", "minimum": 0 },
+        "end_unix_ms": { "type": "integer", "minimum": 0 },
+        "duration_ms": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "attempts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["attempt", "duration_ms", "status", "error"],
+        "properties": {
+          "attempt": { "type": "integer", "minimum": 1 },
+          "duration_ms": { "type": "integer", "minimum": 0 },
+          "status": { "type": "string" },
+          "error": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "source_status": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["source", "ok"],
+        "properties": {
+          "source": { "type": "string" },
+          "ok": { "type": "boolean" }
+        }
+      }
+    },
+    "payload": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/cliPayload" }
+      ]
+    }
+  },
+  "$defs": {
+    "cliPayload": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "engine",
+        "requested_level",
+        "selected_level",
+        "downgrade_reasons",
+        "level0",
+        "postgres_level0",
+        "level1"
+      ],
+      "properties": {
+        "engine": { "type": "string" },
+        "requested_level": { "type": "string" },
+        "selected_level": { "type": "string" },
+        "downgrade_reasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "level0": { "$ref": "#/$defs/mysqlLevel0Report" },
+        "postgres_level0": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/postgresLevel0Report" }
+          ]
+        },
+        "level1": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/level1Report" }
+          ]
+        }
+      }
+    },
+    "mysqlLevel0Report": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["collected_at_unix_ms", "capability", "mysql", "os", "warnings"],
+      "properties": {
+        "collected_at_unix_ms": { "type": "integer", "minimum": 0 },
+        "capability": { "$ref": "#/$defs/mysqlLevel0Capability" },
+        "mysql": { "$ref": "#/$defs/mysqlLevel0Snapshot" },
+        "os": { "$ref": "#/$defs/osSnapshot" },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "mysqlLevel0Capability": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "mysql_connected",
+        "mysql_status_access",
+        "mysql_variables_access",
+        "information_schema_access",
+        "replication_status_access",
+        "os_metrics_access"
+      ],
+      "properties": {
+        "mysql_connected": { "type": "boolean" },
+        "mysql_status_access": { "type": "boolean" },
+        "mysql_variables_access": { "type": "boolean" },
+        "information_schema_access": { "type": "boolean" },
+        "replication_status_access": { "type": "boolean" },
+        "os_metrics_access": { "type": "boolean" }
+      }
+    },
+    "mysqlLevel0Snapshot": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "global_status",
+        "global_variables",
+        "table_sizes",
+        "indexes",
+        "replication_status",
+        "replication_status_source"
+      ],
+      "properties": {
+        "global_status": { "type": "object" },
+        "global_variables": { "type": "object" },
+        "table_sizes": { "type": "array", "items": { "type": "object" } },
+        "indexes": { "type": "array", "items": { "type": "object" } },
+        "replication_status": { "type": ["object", "null"] },
+        "replication_status_source": { "type": ["string", "null"] }
+      }
+    },
+    "osSnapshot": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["proc_cpu", "proc_mem", "load_average", "vmstat", "iostat", "sar"],
+      "properties": {
+        "proc_cpu": { "type": "object" },
+        "proc_mem": { "type": "object" },
+        "load_average": { "type": "object" },
+        "vmstat": { "$ref": "#/$defs/optionalCommandSample" },
+        "iostat": { "$ref": "#/$defs/optionalCommandSample" },
+        "sar": { "$ref": "#/$defs/optionalCommandSample" }
+      }
+    },
+    "optionalCommandSample": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["command", "args", "available", "status_code", "output", "error"],
+      "properties": {
+        "command": { "type": "string" },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "available": { "type": "boolean" },
+        "status_code": { "type": ["integer", "null"] },
+        "output": { "type": ["string", "null"] },
+        "error": { "type": ["string", "null"] }
+      }
+    },
+    "postgresLevel0Report": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["collected_at_unix_ms", "capability", "postgres", "warnings"],
+      "properties": {
+        "collected_at_unix_ms": { "type": "integer", "minimum": 0 },
+        "capability": { "$ref": "#/$defs/postgresLevel0Capability" },
+        "postgres": { "type": "object" },
+        "warnings": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "postgresLevel0Capability": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "postgres_connected",
+        "has_status_access",
+        "has_settings_access",
+        "has_storage_access",
+        "has_replication_status_access"
+      ],
+      "properties": {
+        "postgres_connected": { "type": "boolean" },
+        "has_status_access": { "type": "boolean" },
+        "has_settings_access": { "type": "boolean" },
+        "has_storage_access": { "type": "boolean" },
+        "has_replication_status_access": { "type": "boolean" }
+      }
+    },
+    "level1Report": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["collected_at_unix_ms", "capability", "slow_log", "error_log", "warnings"],
+      "properties": {
+        "collected_at_unix_ms": { "type": "integer", "minimum": 0 },
+        "capability": { "$ref": "#/$defs/level1Capability" },
+        "slow_log": { "$ref": "#/$defs/slowLogSnapshot" },
+        "error_log": { "$ref": "#/$defs/errorLogSnapshot" },
+        "warnings": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "level1Capability": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "mysql_connected",
+        "postgres_connected",
+        "can_enable_slow_log_hot_switch",
+        "can_read_slow_log",
+        "can_read_error_log"
+      ],
+      "properties": {
+        "mysql_connected": { "type": "boolean" },
+        "postgres_connected": { "type": "boolean" },
+        "can_enable_slow_log_hot_switch": { "type": "boolean" },
+        "can_read_slow_log": { "type": "boolean" },
+        "can_read_error_log": { "type": "boolean" }
+      }
+    },
+    "slowLogSnapshot": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "enabled_for_window",
+        "window_secs",
+        "long_query_time_secs",
+        "slow_log_path",
+        "previous_slow_query_log",
+        "previous_long_query_time",
+        "collected_bytes",
+        "parsed_entries",
+        "digest_count",
+        "digests"
+      ],
+      "properties": {
+        "enabled_for_window": { "type": "boolean" },
+        "window_secs": { "type": "integer", "minimum": 0 },
+        "long_query_time_secs": { "type": "number", "minimum": 0 },
+        "slow_log_path": { "type": ["string", "null"] },
+        "previous_slow_query_log": { "type": ["string", "null"] },
+        "previous_long_query_time": { "type": ["string", "null"] },
+        "collected_bytes": { "type": "integer", "minimum": 0 },
+        "parsed_entries": { "type": "integer", "minimum": 0 },
+        "digest_count": { "type": "integer", "minimum": 0 },
+        "digests": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "errorLogSnapshot": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["error_log_path", "sampled_lines", "alert_count", "alerts"],
+      "properties": {
+        "error_log_path": { "type": ["string", "null"] },
+        "sampled_lines": { "type": "integer", "minimum": 0 },
+        "alert_count": { "type": "integer", "minimum": 0 },
+        "alerts": { "type": "array", "items": { "type": "object" } }
+      }
+    }
+  }
+}

@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 
 KEEP_CONTAINERS="${KEEP_CONTAINERS:-0}"
+MATRIX_PROFILE="${MATRIX_PROFILE:-full}"
 
 cleanup() {
   if [[ "${KEEP_CONTAINERS}" == "1" ]]; then
@@ -151,13 +152,26 @@ run_postgres_level1_case() {
   assert_jq "${output}" '([.payload.level1.error_log.alerts[].category] | index("deadlock")) != null' "postgres ${tag} deadlock alert detected"
 }
 
-run_mysql_level0_case "5_7" "3307"
-run_mysql_level1_case "mysql57" "mysql57" "3307"
-run_mysql_level0_case "8_0" "3308"
-run_mysql_level1_case "mysql80" "mysql80" "3308"
-
-run_postgres_level0_case "postgres14" "14" "5433"
-run_postgres_level0_case "postgres16" "16" "5434"
-run_postgres_level1_case "postgres16" "16" "5434"
+case "${MATRIX_PROFILE}" in
+  smoke)
+    run_mysql_level0_case "8_0" "3308"
+    run_mysql_level1_case "mysql80" "mysql80" "3308"
+    run_postgres_level0_case "postgres16" "16" "5434"
+    run_postgres_level1_case "postgres16" "16" "5434"
+    ;;
+  full)
+    run_mysql_level0_case "5_7" "3307"
+    run_mysql_level1_case "mysql57" "mysql57" "3307"
+    run_mysql_level0_case "8_0" "3308"
+    run_mysql_level1_case "mysql80" "mysql80" "3308"
+    run_postgres_level0_case "postgres14" "14" "5433"
+    run_postgres_level0_case "postgres16" "16" "5434"
+    run_postgres_level1_case "postgres16" "16" "5434"
+    ;;
+  *)
+    echo "[setup] unknown MATRIX_PROFILE=${MATRIX_PROFILE}, expected smoke|full"
+    exit 1
+    ;;
+esac
 
 echo "[result] all matrix cases passed"
